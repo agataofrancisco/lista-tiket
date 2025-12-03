@@ -15,7 +15,6 @@ export default function Home() {
   const [paymentMethod, setPaymentMethod] = useState(null);
   const [mcxPhone, setMcxPhone] = useState('');
   const [transactionId, setTransactionId] = useState(null);
-
   const [qrCodeUrl, setQrCodeUrl] = useState(null);
   const [error, setError] = useState(null);
 
@@ -73,7 +72,6 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || 'Erro no pagamento');
 
       setTransactionId(data.transactionId);
-      setTicketData(data);
       setQrCodeUrl(data.qrCode);
       setStep('success');
     } catch (err) {
@@ -91,7 +89,7 @@ export default function Home() {
 
       <div className="container">
         <header>
-          <h1>🎈 Lista Tiket</h1>
+          <h1>Lista Tiket</h1>
           <p className="subtitle">Compre os seus bilhetes para o evento infantil</p>
         </header>
 
@@ -99,7 +97,7 @@ export default function Home() {
           {/* Formulário */}
           {step === 'form' && (
             <section className="card">
-              <h2>📝 Dados do Responsável</h2>
+              <h2>Dados do Responsável</h2>
               <form onSubmit={handleSubmit}>
                 <div className="form-group">
                   <label>Nome Completo *</label>
@@ -132,7 +130,7 @@ export default function Home() {
                   />
                 </div>
 
-                <h3>👶 Crianças</h3>
+                <h3>Crianças</h3>
                 {children.map((child, index) => (
                   <div key={index} className="child-entry">
                     <label>Idade da Criança {index + 1}:</label>
@@ -145,14 +143,14 @@ export default function Home() {
                       placeholder="Idade"
                     />
                     {children.length > 1 && (
-                      <button type="button" className="btn-remove" onClick={() => removeChild(index)}>✕</button>
+                      <button type="button" className="btn-remove" onClick={() => removeChild(index)}>X</button>
                     )}
                   </div>
                 ))}
                 <button type="button" className="btn-secondary" onClick={addChild}>+ Adicionar Criança</button>
 
                 <div className="summary-box">
-                  <h3>📊 Resumo</h3>
+                  <h3>Resumo</h3>
                   <p>Total de pessoas: {1 + ages.length}</p>
                   <p>Crianças que pagam (5+ anos): {payingChildren}</p>
                   <p>Crianças grátis (&lt;5 anos): {freeChildren}</p>
@@ -168,7 +166,7 @@ export default function Home() {
           {/* Pagamento */}
           {step === 'payment' && (
             <section className="card">
-              <h2>💳 Método de Pagamento</h2>
+              <h2>Método de Pagamento</h2>
               {error && <div className="error-msg">{error}</div>}
 
               <div className="payment-methods">
@@ -177,7 +175,7 @@ export default function Home() {
                   className={`payment-btn ${paymentMethod === 'MCX_EXPRESS' ? 'active' : ''}`}
                   onClick={() => setPaymentMethod('MCX_EXPRESS')}
                 >
-                  <span className="payment-icon">📱</span>
+                  <span className="payment-icon">MCX</span>
                   <span>Multicaixa Express</span>
                 </button>
                 <button
@@ -185,7 +183,7 @@ export default function Home() {
                   className={`payment-btn ${paymentMethod === 'QR_CODE' ? 'active' : ''}`}
                   onClick={() => setPaymentMethod('QR_CODE')}
                 >
-                  <span className="payment-icon">📷</span>
+                  <span className="payment-icon">QR</span>
                   <span>Código QR</span>
                 </button>
               </div>
@@ -214,7 +212,7 @@ export default function Home() {
                 </div>
               )}
 
-              <button type="button" className="btn-secondary" onClick={() => setStep('form')}>← Voltar</button>
+              <button type="button" className="btn-secondary" onClick={() => setStep('form')}>Voltar</button>
             </section>
           )}
 
@@ -233,7 +231,7 @@ export default function Home() {
           {step === 'success' && (
             <section className="card">
               <div className="success">
-                <h2>✅ Pagamento Confirmado!</h2>
+                <h2>Pagamento Confirmado!</h2>
                 <p>Os seus bilhetes foram reservados com sucesso.</p>
                 <div className="ticket-info">
                   <p><strong>Nome:</strong> {formData.nome}</p>
@@ -247,7 +245,7 @@ export default function Home() {
                 )}
                 <p className="qr-instruction">Apresente este QR Code na entrada do evento</p>
                 <a href={qrCodeUrl} download={`bilhete-${transactionId}.png`} className="btn-primary">
-                  📥 Baixar Bilhete
+                  Baixar Bilhete
                 </a>
               </div>
             </section>
@@ -284,7 +282,7 @@ export default function Home() {
         .child-entry { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 10px; }
         .child-entry label { flex: 1; color: #555; }
         .child-entry input { width: 80px; padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 8px; text-align: center; }
-        .btn-remove { background: #ff6b6b; color: white; border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; }
+        .btn-remove { background: #ff6b6b; color: white; border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-weight: bold; }
         .btn-primary { display: block; width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; margin-top: 20px; text-align: center; text-decoration: none; }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4); }
         .btn-secondary { width: 100%; padding: 12px; background: #f0f0f0; color: #555; border: none; border-radius: 10px; font-size: 1rem; cursor: pointer; margin-top: 10px; }
@@ -295,7 +293,7 @@ export default function Home() {
         .payment-methods { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
         .payment-btn { display: flex; flex-direction: column; align-items: center; padding: 25px 15px; background: #f8f9fa; border: 3px solid #e0e0e0; border-radius: 15px; cursor: pointer; }
         .payment-btn:hover, .payment-btn.active { border-color: #667eea; background: #f0f4ff; }
-        .payment-icon { font-size: 2.5rem; margin-bottom: 10px; }
+        .payment-icon { font-size: 1.5rem; margin-bottom: 10px; font-weight: bold; color: #667eea; }
         .payment-form { padding: 20px; background: #f8f9fa; border-radius: 15px; margin-top: 20px; }
         .processing { text-align: center; padding: 40px 20px; }
         .spinner { width: 60px; height: 60px; border: 5px solid #f0f0f0; border-top-color: #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }

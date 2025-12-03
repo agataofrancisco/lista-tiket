@@ -1,7 +1,5 @@
 import QRCode from 'qrcode';
-
-// Cache do token AppyPay
-let tokenCache = { token: null, expiresAt: 0 };
+import nodemailer from 'nodemailer';
 
 // Armazenamento temporário de transações (em produção usar DB)
 const transactions = new Map();
@@ -18,7 +16,7 @@ export default async function handler(req, res) {
     const transactionId = `TKT-${Date.now()}-${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
 
     // Guardar dados da transação
-    transactions.set(transactionId, {
+    const txData = {
       nome,
       telefone,
       email,
@@ -26,166 +24,49 @@ export default async function handler(req, res) {
       totalPrice,
       ticketCount,
       paymentMethod,
-      status: 'PENDING',
+      mcxPhone,
+      status: 'APPROVED', // Simulação: sempre aprovado
       createdAt: new Date().toISOString()
+    };
+    transactions.set(transactionId, txData);
+
+    // Simular delay de processamento (1-2 segundos)
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Gerar QR Code do bilhete
+    const ticketQR = await generateTicketQR({
+      nome,
+      bilhetes: ticketCount,
+      transacao: transactionId,
+      data: new Date().toISOString()
     });
 
-    // Obter token AppyPay
-    const token = await getAppyPayToken();
+    // Enviar para Google Forms
+    await sendToGoogleForms(txData, transactionId);
 
-    // Criar cobrança na AppyPay
-    const chargeResponse = await createCharge({
-      token,
+    // Enviar email de confirmação
+    await sendConfirmationEmail({
+      to: email,
+      nome,
+      ticketCount,
+      totalPrice,
       transactionId,
-      amount: totalPrice,
-      paymentMethod,
-      phoneNumber: mcxPhone,
-      description: `Bilhetes Evento Infantil - ${nome}`
+      children,
+      qrCode: ticketQR
     });
-
-    // Se pagamento aprovado (simulação ou real)
-    if (chargeResponse.status === 'APPROVED' || process.env.NODE_ENV === 'development') {
-      // Atualizar status
-      const txData = transactions.get(transactionId);
-      txData.status = 'APPROVED';
-      transactions.set(transactionId, txData);
-
-      // Gerar QR Code do bilhete
-      const ticketQR = await generateTicketQR({
-        nome,
-        bilhetes: ticketCount,
-        transacao: transactionId,
-        data: new Date().toISOString()
-      });
-
-      // Enviar para Google Forms
-      await sendToGoogleForms(txData, transactionId);
-
-      // Enviar email com QR
-      await sendConfirmationEmail({
-        to: email,
-        nome,
-        ticketCount,
-        totalPrice,
-        transactionId,
-        children,
-        qrCode: ticketQR
-      });
-
-      return res.status(200).json({
-        success: true,
-        transactionId,
-        ticketCount,
-        qrCode: ticketQR,
-        message: 'Pagamento confirmado!'
-      });
-    }
-
-    // Se QR_CODE, retornar QR de pagamento
-    if (paymentMethod === 'QR_CODE' && chargeResponse.qrCode) {
-      return res.status(200).json({
-        success: true,
-        transactionId,
-        paymentQR: chargeResponse.qrCode,
-        status: 'PENDING'
-      });
-    }
 
     return res.status(200).json({
       success: true,
       transactionId,
-      status: chargeResponse.status || 'PENDING'
+      ticketCount,
+      qrCode: ticketQR,
+      message: 'Pagamento confirmado!'
     });
 
   } catch (error) {
     console.error('Payment error:', error);
     return res.status(500).json({ error: error.message || 'Erro ao processar pagamento' });
   }
-}
-
-// Obter token de autenticação AppyPay
-async function getAppyPayToken() {
-  // Verificar cache
-  if (tokenCache.token && Date.now() < tokenCache.expiresAt) {
-    return tokenCache.token;
-  }
-
-  // Em desenvolvimento, simular token
-  if (process.env.NODE_ENV === 'development' && !process.env.APPYPAY_CLIENT_SECRET) {
-    return 'dev-token-simulated';
-  }
-
-  const tokenUrl = process.env.APPYPAY_TOKEN_URL || 
-    'https://login.microsoftonline.com/appypaydev.onmicrosoft.com/oauth2/token';
-
-  const params = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: process.env.APPYPAY_CLIENT_ID,
-    client_secret: process.env.APPYPAY_CLIENT_SECRET,
-    resource: 'https://appypaydev.onmicrosoft.com/appypay-payment-gateway'
-  });
-
-  const response = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString()
-  });
-
-  if (!response.ok) {
-    throw new Error('Falha na autenticação AppyPay');
-  }
-
-  const data = await response.json();
-  
-  // Cache por 50 minutos (token expira em 1 hora)
-  tokenCache = {
-    token: data.access_token,
-    expiresAt: Date.now() + (50 * 60 * 1000)
-  };
-
-  return data.access_token;
-}
-
-// Criar cobrança na AppyPay
-async function createCharge({ token, transactionId, amount, paymentMethod, phoneNumber, description }) {
-  // Em desenvolvimento sem credenciais, simular
-  if (process.env.NODE_ENV === 'development' && !process.env.APPYPAY_CLIENT_SECRET) {
-    console.log('Simulando pagamento AppyPay:', { transactionId, amount, paymentMethod });
-    return { status: 'APPROVED', transactionId };
-  }
-
-  const apiUrl = process.env.APPYPAY_API_URL || 'https://gwy-api-tst.appypay.co.ao/v1';
-  
-  const body = {
-    clientId: process.env.APPYPAY_CLIENT_ID,
-    merchantTransactionId: transactionId,
-    amount: amount,
-    currency: 'AOA',
-    paymentMethod: paymentMethod,
-    description: description
-  };
-
-  // Adicionar info específica do método de pagamento
-  if (paymentMethod === 'MCX_EXPRESS' && phoneNumber) {
-    body.paymentInfo = { phoneNumber: phoneNumber.replace(/\s/g, '') };
-  }
-
-  const response = await fetch(`${apiUrl}/charges`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify(body)
-  });
-
-  const data = await response.json();
-  
-  if (!response.ok) {
-    throw new Error(data.message || 'Erro na cobrança AppyPay');
-  }
-
-  return data;
 }
 
 // Gerar QR Code do bilhete
@@ -212,17 +93,16 @@ async function sendToGoogleForms(data, transactionId) {
   }
 
   const formUrl = `https://docs.google.com/forms/d/e/${formId}/formResponse`;
-  
-  // IDs dos campos do Google Form (você precisa criar o form e pegar os IDs)
+
   const formData = new URLSearchParams({
-    'entry.1552785722': data.nome,           // Nome
-    'entry.1303791748': data.telefone,       // Telefone
-    'entry.1499492708': data.email,          // Email
-    'entry.1123772826': data.children.length.toString(), // Nº Crianças
-    'entry.1626724011': data.children.join(', '),        // Idades
-    'entry.39898872': data.ticketCount.toString(),     // Nº Bilhetes
-    'entry.827343819': transactionId,       // ID Transação
-    'entry.691609952': new Date().toLocaleString('pt-AO') // Data/Hora
+    'entry.1552785722': data.nome,
+    'entry.1303791748': data.telefone,
+    'entry.1499492708': data.email,
+    'entry.1123772826': data.children.length.toString(),
+    'entry.1626724011': data.children.join(', '),
+    'entry.39898872': data.ticketCount.toString(),
+    'entry.827343819': transactionId,
+    'entry.691609952': new Date().toLocaleString('pt-AO')
   });
 
   try {
@@ -237,44 +117,83 @@ async function sendToGoogleForms(data, transactionId) {
   }
 }
 
-// Enviar email de confirmação com EmailJS
-async function sendConfirmationEmail({ to, nome, ticketCount, totalPrice, transactionId, children, qrCode }) {
-  const serviceId = process.env.EMAILJS_SERVICE_ID;
-  const templateId = process.env.EMAILJS_TEMPLATE_ID || 'template_ticket';
-  const publicKey = process.env.EMAILJS_PUBLIC_KEY;
-  const privateKey = process.env.EMAILJS_PRIVATE_KEY;
 
-  if (!serviceId || !publicKey) {
-    console.log('EmailJS não configurado');
+// Enviar email de confirmação com Nodemailer
+async function sendConfirmationEmail({ to, nome, ticketCount, totalPrice, transactionId, children, qrCode }) {
+  // Verificar se SMTP está configurado
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    console.log('SMTP não configurado - Email não enviado');
+    console.log('Dados do bilhete:', { to, nome, ticketCount, totalPrice, transactionId });
     return;
   }
 
   try {
-    const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        service_id: serviceId,
-        template_id: templateId,
-        user_id: publicKey,
-        accessToken: privateKey,
-        template_params: {
-          to_email: to,
-          to_name: nome,
-          ticket_count: ticketCount,
-          total_price: totalPrice,
-          transaction_id: transactionId,
-          children_ages: children.join(', '),
-          qr_code_image: qrCode // Base64 do QR
-        }
-      })
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: parseInt(process.env.SMTP_PORT) || 587,
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: smtpUser,
+        pass: smtpPass
+      }
     });
 
-    if (response.ok) {
-      console.log('Email enviado com sucesso');
-    } else {
-      console.error('Erro ao enviar email:', await response.text());
-    }
+    // Extrair base64 do QR Code para anexar
+    const qrBase64 = qrCode ? qrCode.split(',')[1] : null;
+
+    const mailOptions = {
+      from: `"${process.env.FROM_NAME || 'Lista Tiket'}" <${process.env.FROM_EMAIL || smtpUser}>`,
+      to: to,
+      subject: `Confirmação de Bilhete - ${transactionId}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px 15px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0;">Lista Tiket</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0;">Confirmação de Bilhete</p>
+          </div>
+          
+          <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 15px 15px;">
+            <h2 style="color: #28a745; margin-top: 0;">Pagamento Confirmado!</h2>
+            
+            <p>Olá <strong>${nome}</strong>,</p>
+            <p>Os seus bilhetes para o evento infantil foram reservados com sucesso.</p>
+            
+            <div style="background: white; padding: 20px; border-radius: 10px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #333;">Detalhes da Compra</h3>
+              <p><strong>ID da Transação:</strong> ${transactionId}</p>
+              <p><strong>Número de Bilhetes:</strong> ${ticketCount}</p>
+              <p><strong>Idades das Crianças:</strong> ${children.join(', ')} anos</p>
+              <p><strong>Total Pago:</strong> ${totalPrice.toLocaleString('pt-AO')} Kz</p>
+            </div>
+            
+            ${qrCode ? `
+            <div style="text-align: center; margin: 20px 0;">
+              <p style="color: #666; margin-bottom: 15px;">Apresente este QR Code na entrada do evento:</p>
+              <img src="cid:qrcode" alt="QR Code do Bilhete" style="max-width: 200px; border: 3px dashed #667eea; border-radius: 10px; padding: 10px;">
+            </div>
+            ` : ''}
+            
+            <p style="color: #666; font-size: 14px; margin-top: 30px;">
+              Obrigado por escolher Lista Tiket!<br>
+              Em caso de dúvidas, entre em contacto connosco.
+            </p>
+          </div>
+        </div>
+      `,
+      attachments: qrBase64 ? [{
+        filename: `bilhete-${transactionId}.png`,
+        content: qrBase64,
+        encoding: 'base64',
+        cid: 'qrcode'
+      }] : []
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log('Email enviado com sucesso para:', to);
   } catch (error) {
     console.error('Erro ao enviar email:', error);
   }
