@@ -176,7 +176,7 @@ export default function Home() {
                   onClick={() => setPaymentMethod('MCX_EXPRESS')}
                 >
                   <span className="payment-icon">MCX</span>
-                  <span>Multicaixa Express</span>
+                  <span>Express-Express</span>
                 </button>
                 <button
                   type="button"
@@ -190,9 +190,9 @@ export default function Home() {
 
               {paymentMethod === 'MCX_EXPRESS' && (
                 <div className="payment-form">
-                  <h3>Multicaixa Express</h3>
+                  <h3>Express-Express</h3>
                   <div className="form-group">
-                    <label>Número de Telefone (Multicaixa)</label>
+                    <label>Número de Telefone ()</label>
                     <input
                       type="tel"
                       value={mcxPhone}
